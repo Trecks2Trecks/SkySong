@@ -11,6 +11,8 @@
   <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
   <script>
     const map = L.map('map').setView([27.9881, 86.9250], 15);
+    let currentMarker = null;
+    let boundaryLayer = null;
 
     function getBoundingRectangle(lat, lng, heightInMeters, widthInMeters) {
         const latDelta = heightInMeters / 111000; // 1 degree of latitude is approximately 111000 meters
@@ -41,12 +43,12 @@
                 // calc corners
                 const [swCorner, neCorner] = getBoundingRectangle(lat, lng, heightInMeters, widthInMeters);
                 
-                boundaryLayer = L.rectangle([swCorner, neCorner], { color: 'pink', weight: 1 }).addTo(map);
+                boundaryLayer = L.rectangle([swCorner, neCorner], { color: 'red', weight: 1 }).addTo(map);
                 
                 // zoom into the boundary rectangle
                 map.fitBounds(boundaryLayer.getBounds());
 
-                L.marker([lat, lng])
+                currentMarker = L.marker([lat, lng])
                     .addTo(map)
                     .bindPopup('You are here')
                     .openPopup();
@@ -71,25 +73,31 @@
       geocoder: L.Control.Geocoder.nominatim()
     })  
     .on('markgeocode', function(e) {
-      console.log('Geocode result:', e.geocode.properties.place_id);
-      const LoBbox = fetch(`https://nominatim.openstreetmap.org/search?q=${e.geocode.name}&polygon_geojson=1&format=json`)
-        .then(response => response.json())
-        .then(data => {
-          console.log('Place details:', data);
-          boundaryLayer = L.geoJSON(data[0].geojson).addTo(map)
-          map.fitBounds(boundaryLayer.getBounds())
+        if (boundaryLayer) {
+            boundaryLayer.remove();
+        }  
+        console.log('Geocode result:', e.geocode.properties.place_id);
+        const LoBbox = fetch(`https://nominatim.openstreetmap.org/search?q=${e.geocode.name}&polygon_geojson=1&format=json`)
+            .then(response => response.json())
+            .then(data => {
+                console.log('Place details:', data);
+                boundaryLayer = L.geoJSON(data[0].geojson, { color: 'red', weight: 1 }).addTo(map)
+                map.fitBounds(boundaryLayer.getBounds())
+            })
+            .catch(error => {
+                console.error('Error fetching place details:', error);
+            });
+        const { center, bbox } = e.geocode;
+        //map.fitBounds(bbox);               // zoom to result
+        if (currentMarker) {
+            currentMarker.remove();
+        }
+        currentMarker = L.marker(center)
+            .addTo(map)
+            .bindPopup(e.geocode.name)
+            .openPopup();
         })
-        .catch(error => {
-          console.error('Error fetching place details:', error);
-        });
-      const { center, bbox } = e.geocode;
-      //map.fitBounds(bbox);               // zoom to result
-      L.marker(center)
-        .addTo(map)
-        .bindPopup(e.geocode.name)
-        .openPopup();
-    })
-    .addTo(map);
-  </script>
+        .addTo(map);
+    </script>
 </body>
 </html>
