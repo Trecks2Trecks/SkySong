@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
+  <style>#map { height: 100vh; }</style>
+</head>
+<body>
+  <div id="map"></div>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script>
+    const map = L.map('map').setView([27.9881, 86.9250], 15);
+
+    function getBoundingRectangle(lat, lng, heightInMeters, widthInMeters) {
+        const latDelta = heightInMeters / 111000; // 1 degree of latitude is approximately 111000 meters
+        const latInRadians = lat * (Math.PI / 180);
+        const metersPerLongitudeDegree = 111320 * Math.cos(latInRadians);
+        const lngDelta = widthInMeters / metersPerLongitudeDegree;
+
+        const swCorner = [lat - (latDelta / 2), lng - (lngDelta / 2)];
+        const neCorner = [lat + (latDelta / 2), lng + (lngDelta / 2)];
+
+        return [swCorner, neCorner];
+    }
+
+    // dimensions of area
+    const heightInMeters = 2500;
+    const widthInMeters = 6000;
+
+    // 1 degree of latitude is approximately 111000 meters
+    const latDelta = heightInMeters / 111000;
+
+    // request location
+    if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lng = position.coords.longitude;
+
+                // calc corners
+                const [swCorner, neCorner] = getBoundingRectangle(lat, lng, heightInMeters, widthInMeters);
+                
+                boundaryLayer = L.rectangle([swCorner, neCorner], { color: 'pink', weight: 1 }).addTo(map);
+                
+                // zoom into the boundary rectangle
+                map.fitBounds(boundaryLayer.getBounds());
+
+                L.marker([lat, lng])
+                    .addTo(map)
+                    .bindPopup('You are here')
+                    .openPopup();
+            },
+            (error) => {
+                console.error('Location error:', error);
+            }
+        );
+    } else {
+        console.log('Geolocation is not supported by this browser.');
+    }
+
+    L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Esri' }
+    ).addTo(map);
+
+    // Add search bar
+    const geocoder = L.Control.geocoder({
+      defaultMarkGeocode: false,
+      placeholder: 'Search for a place…',
+      geocoder: L.Control.Geocoder.nominatim()
+    })  
+    .on('markgeocode', function(e) {
+      console.log('Geocode result:', e.geocode.properties.place_id);
+      const LoBbox = fetch(`https://nominatim.openstreetmap.org/search?q=${e.geocode.name}&polygon_geojson=1&format=json`)
+        .then(response => response.json())
+        .then(data => {
+          console.log('Place details:', data);
+          boundaryLayer = L.geoJSON(data[0].geojson).addTo(map)
+          map.fitBounds(boundaryLayer.getBounds())
+        })
+        .catch(error => {
+          console.error('Error fetching place details:', error);
+        });
+      const { center, bbox } = e.geocode;
+      //map.fitBounds(bbox);               // zoom to result
+      L.marker(center)
+        .addTo(map)
+        .bindPopup(e.geocode.name)
+        .openPopup();
+    })
+    .addTo(map);
+  </script>
+</body>
+</html>
