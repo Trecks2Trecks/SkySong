@@ -1,103 +1,302 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css"/>
-  <style>#map { height: 100vh; }</style>
+  <meta charset="utf-8" />
+  <title>SkySong Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    #map { width: 100vw; height: 100vh; }
+    
+    /* Search Bar Styling */
+    .search-container {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      z-index: 1;
+      background: rgb(47, 46, 46);
+      padding: 8px;
+      border-radius: 4px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      display: flex;
+      gap: 8px;
+    }
+    .search-container input {
+      padding: 6px;
+      width: 250px;
+      border: 1px solid rgb(88, 88, 88);
+      border-radius: 3px;
+    }
+    .search-container button {
+      padding: 6px 12px;
+      background: #641111;
+      color: rgb(255, 255, 255);
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .search-container button:hover {
+      background: #641111;
+    }
+  </style>
 </head>
 <body>
+  <div class="search-container">
+    <input type="text" id="searchInput" placeholder="Search for a place…" />
+    <button id="searchButton">Search</button>
+  </div>
   <div id="map"></div>
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+
+  <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
   <script>
-    const map = L.map('map').setView([27.9881, 86.9250], 15);
-    let currentMarker = null;
-    let boundaryLayer = null;
+    
+    fetch('https://raw.githubusercontent.com/Trecks2Trecks/SkySong/refs/heads/main/maputnik.json')
+      .then(res => res.json())
+      .then(style => {
 
-    function getBoundingRectangle(lat, lng, heightInMeters, widthInMeters) {
-        const latDelta = heightInMeters / 111000; // 1 degree of latitude is approximately 111000 meters
-        const latInRadians = lat * (Math.PI / 180);
-        const metersPerLongitudeDegree = 111320 * Math.cos(latInRadians);
-        const lngDelta = widthInMeters / metersPerLongitudeDegree;
+        // terrain and hillshade setup
+        style.sources.terrainSource = {
+          type: 'raster-dem',
+          tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
+          minzoom: 0,
+          maxzoom: 14,
+          tileSize: 256,
+          encoding: 'terrarium'
+        };
 
-        const swCorner = [lat - (latDelta / 2), lng - (lngDelta / 2)];
-        const neCorner = [lat + (latDelta / 2), lng + (lngDelta / 2)];
+        style.terrain = {
+          source: 'terrainSource',
+          exaggeration: 1.5
+        };
 
-        return [swCorner, neCorner];
-    }
-
-    // dimensions of area
-    const heightInMeters = 2500;
-    const widthInMeters = 6000;
-
-    // 1 degree of latitude is approximately 111000 meters
-    const latDelta = heightInMeters / 111000;
-
-    // request location
-    if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                const lat = position.coords.latitude;
-                const lng = position.coords.longitude;
-
-                // calc corners
-                const [swCorner, neCorner] = getBoundingRectangle(lat, lng, heightInMeters, widthInMeters);
-                
-                boundaryLayer = L.rectangle([swCorner, neCorner], { color: 'red', weight: 1 }).addTo(map);
-                
-                // zoom into the boundary rectangle
-                map.fitBounds(boundaryLayer.getBounds());
-
-                currentMarker = L.marker([lat, lng])
-                    .addTo(map)
-                    .bindPopup('You are here')
-                    .openPopup();
-            },
-            (error) => {
-                console.error('Location error:', error);
-            }
-        );
-    } else {
-        console.log('Geolocation is not supported by this browser.');
-    }
-
-    L.tileLayer(
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { attribution: 'Esri' }
-    ).addTo(map);
-
-    // Add search bar
-    const geocoder = L.Control.geocoder({
-      defaultMarkGeocode: false,
-      placeholder: 'Search for a place…',
-      geocoder: L.Control.Geocoder.nominatim()
-    })  
-    .on('markgeocode', function(e) {
-        if (boundaryLayer) {
-            boundaryLayer.remove();
-        }  
-        console.log('Geocode result:', e.geocode.properties.place_id);
-        const LoBbox = fetch(`https://nominatim.openstreetmap.org/search?q=${e.geocode.name}&polygon_geojson=1&format=json`)
-            .then(response => response.json())
-            .then(data => {
-                console.log('Place details:', data);
-                boundaryLayer = L.geoJSON(data[0].geojson, { color: 'red', weight: 1 }).addTo(map)
-                map.fitBounds(boundaryLayer.getBounds())
-            })
-            .catch(error => {
-                console.error('Error fetching place details:', error);
-            });
-        const { center, bbox } = e.geocode;
-        //map.fitBounds(bbox);               // zoom to result
-        if (currentMarker) {
-            currentMarker.remove();
+        const hillshadeLayer = style.layers.find(l => l.id === 'hillshade');
+        if (hillshadeLayer) {
+          hillshadeLayer.source = 'terrainSource';
+          hillshadeLayer.layout.visibility = 'visible';
+          style.layers = [
+            hillshadeLayer,
+            ...style.layers.filter(l => l.id !== 'hillshade')
+          ];
         }
-        currentMarker = L.marker(center)
-            .addTo(map)
-            .bindPopup(e.geocode.name)
-            .openPopup();
-        })
-        .addTo(map);
-    </script>
+
+        // initialise map
+        const map = new maplibregl.Map({
+          container: 'map',
+          style: style,
+          zoom: 12,
+          center: [11.39085, 47.27574],
+          pitch: 70,
+          maxZoom: 18,
+          maxPitch: 85,
+          hash: true
+        });
+
+        // controls
+        map.addControl(new maplibregl.NavigationControl({
+          visualizePitch: true,
+          showZoom: true,
+          showCompass: true
+        }));
+
+        map.addControl(new maplibregl.TerrainControl({
+          source: 'terrainSource',
+          exaggeration: 1.5
+        }));
+
+        // calculates bounding box
+        function getBoundingRectangleGeoJSON(lat, lng, heightInMeters, widthInMeters) {
+            const latDelta = heightInMeters / 111000;
+            const latInRadians = lat * (Math.PI / 180);
+            const metersPerLongitudeDegree = 111320 * Math.cos(latInRadians);
+            const lngDelta = widthInMeters / metersPerLongitudeDegree;
+
+            const swLng = lng - (lngDelta / 2);
+            const swLat = lat - (latDelta / 2);
+            const neLng = lng + (lngDelta / 2);
+            const neLat = lat + (latDelta / 2);
+
+            // geojson polygon coordinates
+            return {
+                type: 'Feature',
+                geometry: {
+                    type: 'Polygon',
+                    coordinates: [[
+                        [swLng, swLat],
+                        [neLng, swLat],
+                        [neLng, neLat],
+                        [swLng, neLat],
+                        [swLng, swLat]
+                    ]]
+                }
+            };
+        }
+
+    
+        // update or set up red boundary box layer
+        function updateBoundaryLayer(geojsonFeature, fitBounds = true) {
+            // remove previous source and layer if  exist
+            if (map.getLayer('boundary-layer')) map.removeLayer('boundary-layer');
+            if (map.getSource('boundary-source')) map.removeSource('boundary-source');
+
+            // add geojson source
+            map.addSource('boundary-source', {
+                type: 'geojson',
+                data: geojsonFeature
+            });
+
+            // add layer representing the boundary
+            map.addLayer({
+                id: 'boundary-layer',
+                type: 'line',
+                source: 'boundary-source',
+                paint: {
+                    'line-color': 'red',
+                    'line-width': 2
+                }
+            });
+
+            // calculate bounding box and fit map to it
+            if (fitBounds && geojsonFeature.geometry) {
+                const coordinates = geojsonFeature.geometry.type === 'Polygon' 
+                    ? geojsonFeature.geometry.coordinates[0] 
+                    : geojsonFeature.geometry.coordinates;
+                
+                console.log('Boundary coordinates:', coordinates);
+                // Ensure we have valid coordinates before creating bounds
+                if (coordinates && coordinates.length > 0) {
+                    // create bounds using the first point explicitly as an array
+                    const firstPoint = coordinates[0]; // e.g. [-0.1265398, 51.5004439]
+                    const bounds = new maplibregl.LngLatBounds(firstPoint, firstPoint);
+
+                    // extend the bounds with the rest of the coordinates
+                    coordinates.forEach(coord => {
+                        bounds.extend(coord);
+                    });
+
+                } else {
+                    console.warn('Coordinates array is empty.');
+                }
+            }
+        }
+
+        function performSearch() {
+            const query = document.getElementById('searchInput').value;
+            if (!query) return;
+
+            fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&polygon_geojson=1&format=json`)
+                .then(response => response.json())
+                .then(data => {
+                    if (!data || data.length === 0) {
+                        alert('Location not found');
+                        return;
+                    }
+
+                    const result = data[0];
+                    const lat = parseFloat(result.lat);
+                    const lng = parseFloat(result.lon);
+
+                    // remove old marker
+                    if (currentMarker) currentMarker.remove();
+
+                    // set marker at search 
+                    currentMarker = new maplibregl.Marker({ color: '#3fb1ce' })
+                        .setLngLat([lng, lat])
+                        .setPopup(new maplibregl.Popup().setHTML(`<b>${result.display_name}</b>`))
+                        .addTo(map);
+
+                    // fall back to a standard bounding box rectangle
+                    if (result.geojson && (result.geojson.type === 'Polygon' || result.geojson.type === 'MultiPolygon')) {
+                        updateBoundaryLayer({ type: 'Feature', geometry: result.geojson }, false);
+                        const [south, north, west, east] = result.boundingbox.map(parseFloat);
+                        map.fitBounds([[west, south], [east, north]], { padding: 50 });
+                    } else {
+                        const polyFeature = getBoundingRectangleGeoJSON(lat, lng, 2500, 6000);
+                        updateBoundaryLayer(polyFeature, false);
+                        const coords = polyFeature.geometry.coordinates[0];
+                        map.fitBounds([[coords[0][0], coords[0][1]], [coords[2][0], coords[2][1]]], { padding: 50 });
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching place details:', error);
+                }); 
+        }
+
+        let currentMarker = null;
+
+
+        //map.boxZoom.disable();
+
+        let startPoint = null;
+
+        map.on('mousedown', (e) => {
+            if (!e.originalEvent.shiftKey) return;
+            e.preventDefault();
+            startPoint = e.lngLat;
+        });
+
+        map.on('mousemove', (e) => {
+            if (!startPoint) return;
+            const sw = { lng: Math.min(startPoint.lng, e.lngLat.lng), lat: Math.min(startPoint.lat, e.lngLat.lat) };
+            const ne = { lng: Math.max(startPoint.lng, e.lngLat.lng), lat: Math.max(startPoint.lat, e.lngLat.lat) };
+            updateBoundaryLayer({ type: 'Feature', geometry: { type: 'Polygon', coordinates: [[ [sw.lng, sw.lat], [ne.lng, sw.lat], [ne.lng, ne.lat], [sw.lng, ne.lat], [sw.lng, sw.lat] ]] } }, false);
+        });
+
+        map.on('mouseup', (e) => {
+            if (!startPoint) return;
+            const sw = { lng: Math.min(startPoint.lng, e.lngLat.lng), lat: Math.min(startPoint.lat, e.lngLat.lat) };
+            const ne = { lng: Math.max(startPoint.lng, e.lngLat.lng), lat: Math.max(startPoint.lat, e.lngLat.lat) };
+            const centreLng = (sw.lng + ne.lng) / 2;
+            const centreLat = (sw.lat + ne.lat) / 2;
+            if (currentMarker) currentMarker.remove();
+            currentMarker = new maplibregl.Marker({ color: '#3fb1ce' })
+                .setLngLat([centreLng, centreLat])
+                .addTo(map);
+            map.fitBounds([[sw.lng, sw.lat], [ne.lng, ne.lat]], { padding: 50 });
+            startPoint = null;
+        });
+
+        // location handling
+        map.on('load', () => {
+            const heightInMeters = 2500;
+            const widthInMeters = 6000;
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lng = position.coords.longitude;
+                        const lat = position.coords.latitude;
+
+                        // move to location
+                        map.flyTo({ center: [lng, lat], zoom: 14 });
+
+                        // create bounding polygon 
+                        const polyFeature = getBoundingRectangleGeoJSON(lat, lng, heightInMeters, widthInMeters);
+                        updateBoundaryLayer(polyFeature, true);
+
+                        // add Marker
+                        currentMarker = new maplibregl.Marker({ color: '#3fb1ce' })
+                            .setLngLat([lng, lat])
+                            .setPopup(new maplibregl.Popup().setHTML("You are here"))
+                            .addTo(map);
+                    },
+                    (error) => {
+                        console.error('Location error:', error);
+                    }
+                );
+            } else {
+                console.log('Geolocation is not supported by this browser.');
+            }
+        });
+
+        // search button
+        document.getElementById('searchButton').addEventListener('click', performSearch);
+        document.getElementById('searchInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') performSearch();
+        });
+
+      })
+      .catch(err => console.error('Failed to load style:', err));
+  </script>
 </body>
 </html>
