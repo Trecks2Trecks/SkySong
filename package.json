@@ -1,0 +1,28 @@
+{
+  "name": "skysong",
+  "version": "1.0.0",
+  "description": "Live flight data to generated music.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Trecks2Trecks/SkySong.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Trecks2Trecks/SkySong/issues"
+  },
+  "homepage": "https://github.com/Trecks2Trecks/SkySong#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "flightradarapi": "^1.5.1",
+    "node-fetch": "^3.3.2"
+  }
+}

@@ -2,60 +2,539 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>SkySong Map</title>
+  <title>SkySong Map - Avionics Search</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css" />
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    #map { width: 100vw; height: 100vh; }
+    #map { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; z-index: 0; }
     
-    /* Search Bar Styling */
-    .search-container {
+    /* garming styles */
+    .unit {
       position: absolute;
-      top: 15px;
-      left: 15px;
-      z-index: 1;
-      background: rgb(47, 46, 46);
-      padding: 8px;
-      border-radius: 4px;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+    
+      background: #1a1a1a;
+      border-radius: 6px;
+      border: 2px solid #111;
+      padding: 10px 12px 10px 10px;
       display: flex;
-      gap: 8px;
+      align-items: center;
+      gap: 10px;
+      height: 150px;
+      width: 100%;
+      max-width: 660px;
+      user-select: none;
+      outline: 3px solid #0a0a0a;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    
+      cursor: grab; 
     }
-    .search-container input {
-      padding: 6px;
-      width: 250px;
-      border: 1px solid rgb(88, 88, 88);
-      border-radius: 3px;
+
+    .unit:active {
+      cursor: grabbing;
     }
-    .search-container button {
-      padding: 6px 12px;
-      background: #641111;
-      color: rgb(255, 255, 255);
+
+    /* alert overlay */
+    .skysong-alert {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.85);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 2000;
+      background: #0d0000;
+      border: 1.5px solid #f44;
+      border-radius: 4px;
+      padding: 8px 16px;
+      text-align: center;
+      min-width: 160px;
+      font-family: 'Courier New', monospace;
+    }
+    .skysong-alert.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+      pointer-events: auto;
+    }
+    .skysong-alert .sa-icon {
+      color: #f44;
+      font-size: 14px;
+      margin-bottom: 4px;
+      animation: sa-blink 0.8s step-start infinite;
+    }
+    .skysong-alert .sa-title {
+      color: #f44;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+    }
+    .skysong-alert .sa-sub {
+      color: #a44;
+      font-size: 9px;
+      margin-top: 3px;
+      letter-spacing: 0.05em;
+    }
+    @keyframes sa-blink { 50% { opacity: 0; } }
+
+    .lower-btn.alerting {
+      border-color: #f44;
+      color: #f44;
+      animation: sa-blink 0.8s step-start infinite;
+    }
+
+    /* notification without warning */
+
+    .skysong-notify {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.85);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+      z-index: 2000;
+      background: #001a00;
+      border: 1.5px solid #5dba5d;
+      border-radius: 4px;
+      padding: 8px 16px;
+      text-align: center;
+      min-width: 160px;
+      font-family: 'Courier New', monospace;
+    }
+    .skysong-notify.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+    .skysong-notify .sn-icon {
+      color: #5dba5d;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .skysong-notify .sn-title {
+      color: #e8ffe8;
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 0.1em;
+      text-shadow: 0 0 8px rgba(120,255,120,0.4);
+    }
+    .skysong-notify .sn-sub {
+      color: #5dba5d;
+      font-size: 9px;
+      margin-top: 3px;
+      letter-spacing: 0.05em;
+    }
+
+    .left-knobs { display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+    .knob-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+    .knob-label { font-size: 9px; color: #999; letter-spacing: 0.08em; font-family: Arial, sans-serif; text-align: center; }
+    .knob-sublabel { font-size: 8px; color: #666; letter-spacing: 0.06em; font-family: Arial, sans-serif; text-align: center; }
+    
+    .knob {
+      width: 34px; height: 34px; border-radius: 50%; background: #2a2a2a; border: 2px solid #444;
+      cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; transition: transform 0.1s;
+    }
+    .knob:active { transform: scale(0.94); }
+    
+    .knob-ring {
+      width: 28px; height: 28px; border-radius: 50%;
+      background: repeating-conic-gradient(#3a3a3a 0deg 10deg, #222 10deg 20deg);
+      border: 1px solid #555; display: flex; align-items: center; justify-content: center;
+    }
+    .knob-dot { width: 4px; height: 4px; border-radius: 50%; background: #888; position: absolute; top: 5px; left: 50%; transform: translateX(-50%); }
+    
+    .center { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+    
+    .display-area {
+      background: #0a0a0a; border: 2px solid #333; border-radius: 3px; padding: 6px 8px;
+      height: 68px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden;
+    }
+    .display-area::before {
+      content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+      background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px);
+    }
+    
+    .display-row1 { display: flex; align-items: baseline; justify-content: space-between; gap: 4px; }
+    .freq-block { display: flex; align-items: baseline; gap: 3px; }
+    .freq-tag { font-size: 9px; color: #5dba5d; font-family: 'Courier New', monospace; letter-spacing: 0.04em; line-height: 1; }
+    .freq-sub { font-size: 8px; color: #4a9a4a; font-family: 'Courier New', monospace; }
+    
+    .freq-big {
+      font-size: 28px; font-weight: bold; color: #e8ffe8; font-family: 'Courier New', monospace;
+      letter-spacing: 0.02em; line-height: 1; text-shadow: 0 0 8px rgba(120,255,120,0.4);
+    }
+    
+    input#searchInput {
+      background: transparent;
       border: none;
-      border-radius: 3px;
-      cursor: pointer;
+      outline: none;
+      width: 140px;
+      font-size: 20px;
+      color: #b0d4b0;
+      text-shadow: 0 0 4px rgba(100,200,100,0.2);
+      text-transform: uppercase;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      z-index: 5;
+      position: relative;
     }
-    .search-container button:hover {
-      background: #641111;
+    input#searchInput::placeholder {
+      color: #4a9a4a;
+      opacity: 0.7;
     }
+
+    .loc-label { font-size: 9px; color: #5dba5d; font-family: 'Courier New', monospace; align-self: flex-start; padding-top: 2px; }
+    .display-divider { width: 1px; height: 36px; background: #2a5a2a; flex-shrink: 0; align-self: center; }
+    .status-text { font-size: 10px; color: #5dba5d; font-family: 'Courier New', monospace; letter-spacing: 0.05em; }
+    .searched-loc { font-size: 10px; color: #7ae07a; font-family: 'Courier New', monospace; letter-spacing: 0.04em; margin-left: auto; }
+    .search-tag { font-size: 8px; color: #5dba5d; font-family: 'Courier New', monospace; }
+    
+    .btn-row { display: flex; align-items: center; gap: 5px; padding: 0 2px; }
+    
+    .lower-btn {
+      background: #1e1e1e; border: 1px solid #3a3a3a; border-radius: 3px; color: #aaa;
+      font-size: 9px; font-family: Arial, sans-serif; font-weight: bold; padding: 4px 7px;
+      cursor: pointer; letter-spacing: 0.05em; flex: 1; text-align: center; transition: all 0.1s;
+    }
+    .lower-btn:hover { background: #2a2a2a; border-color: #555; color: #ccc; }
+    .lower-btn:active { background: #151515; transform: scale(0.96); }
+    
+    .led { width: 5px; height: 5px; border-radius: 50%; background: #1a3a1a; border: 1px solid #2a5a2a; flex-shrink: 0; }
+    .led.on { background: #5dba5d; box-shadow: 0 0 4px #5dba5d; }
+    
+    .right-section { display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0; }
+    .skysong-logo { font-size: 9px; color: #888; font-family: Arial, sans-serif; letter-spacing: 0.1em; font-weight: bold; align-self: flex-end; margin-bottom: 2px; }
+    
+    .current-location-btn {
+      width: 28px; height: 22px; background: #222; border: 1px solid #444; border-radius: 3px; color: #aaa;
+      font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.1s;
+    }
+    .current-location-btn:hover { background: #333; border-color: #666; }
+    .current-location-btn:active { background: #1a1a1a; transform: scale(0.94); }
+    
+    .genre-label { font-size: 9px; color: #777; font-family: Arial, sans-serif; letter-spacing: 0.08em; }
+    .genre-knob { width: 38px; height: 38px; border-radius: 50%; background: #252525; border: 2px solid #484848; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; transition: transform 0.12s; }
+    .genre-knob { transition: transform 0.2s ease; }
+    .genre-ring { width: 30px; height: 30px; border-radius: 50%; background: repeating-conic-gradient(#383838 0deg 8deg, #1e1e1e 8deg 16deg); border: 1px solid #555; }
+    .genre { font-size: 7px; color: #666; font-family: Arial, sans-serif; letter-spacing: 0.06em; text-align: center; }
   </style>
 </head>
 <body>
-  <div class="search-container">
-    <input type="text" id="searchInput" placeholder="Search for a place…" />
-    <button id="searchButton">Search</button>
-  </div>
+
   <div id="map"></div>
+
+  <div class="unit">
+    <div class="left-knobs">
+      <div class="knob-group">
+        <div class="knob-label">TEMPO</div>
+        <div class="knob" id="tempoKnob" title="tempo (drag to adjust 0-180)" onclick="adjustTempoClick()">
+            <div class="knob-ring"><div class="knob-dot"></div></div>
+        </div>
+      </div>
+      <div class="knob-group">
+        <div class="knob-label">MUS</div><div class="knob-label">VOL</div>
+        <div class="knob" id="volKnob" title="music volume (drag to adjust 0-100)" onclick="adjustVolClick()">
+            <div class="knob-ring"><div class="knob-dot"></div></div>
+        </div>
+        <div class="knob-sublabel">:3</div>
+      </div>
+    </div>
+
+    <div class="center">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <div class="display-area" style="flex:1;">
+          <div class="display-row1">
+            
+            <div class="freq-block">
+              <div style="display:flex; flex-direction:column; align-items:flex-start; gap:1px;">
+                <div style="display:flex; align-items:baseline; gap:2px;">
+                  <span class="freq-tag">TEMPO</span>
+                  <span class="freq-big" id="tempoDisplay">120</span>
+                </div>
+                <div style="display:flex; align-items:baseline; gap:2px;">
+                  <span class="freq-tag">VOL</span>
+                  <span class="freq-big" id="volDisplay">80</span>
+                </div>
+              </div>
+              <div class="skysong-alert" id="skysongAlert">
+                <div class="sa-icon">⚠</div>
+                <div class="sa-title" id="skysongAlertText">ALERT</div>
+                <div class="sa-sub">PRESS CLEAR TO DISMISS</div>
+              </div>
+                <div class="skysong-notify" id="skysongNotify">
+                    <div class="sn-icon">ℹ</div>
+                    <div class="sn-title" id="skysongNotifyText">NOTIFICATION</div>
+                    <div class="sn-sub" id="skysongNotifySub">NO SUBTITLE</div>
+                </div>
+            </div>
+
+            <div class="display-divider"></div>
+
+            <div class="freq-block">
+              <div style="display:flex; flex-direction:column; align-items:flex-start; gap:1px;">
+                <div style="display:flex; align-items:baseline; gap:2px;">
+                  <span class="loc-label">LOC</span>
+                  <div style="display:flex; flex-direction:column;">
+                    <input type="text" id="searchInput" placeholder="SEARCH..." autocomplete="off" />
+                  </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:4px; margin-left:0px;">
+                  <span class="search-tag">SEARCHED:</span>
+                  <span class="searched-loc" id="searchedLoc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px;"></span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="lower-btn" onclick="flash(this)">SETTINGS
+        </button>
+        <div class="led" id="led1"></div>
+        <button class="lower-btn" onclick="flash(this)">MUSIC</button>
+        <button class="lower-btn" onclick="flash(this)">HEAT</button>
+        <button class="lower-btn" onclick="flash(this); dismissAlert(); document.getElementById('searchInput').value='';document.getElementById('searchedLoc').textContent='';">CLEAR</button>
+        <button class="lower-btn" id="searchButton" onclick="flash(this)">SEARCH</button>
+      </div>
+    </div>
+
+    <div class="right-section">
+      <div class="skysong-logo">SkySong</div>
+      <div class="current-location-btn" title="current location" id="current-location-button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 500 500">
+            <g transform="translate(171.06726725314718,133.80281690140845)translate(78.68212565603208,116.15140845070424)rotate(0)translate(-78.68212565603208,-116.15140845070424) scale(2.323028169014085,2.323028169014085)" opacity="1">
+                <defs class="defs"/>
+                <path transform="translate(-16.129,0)" d="M50,0c-18.706,0 -33.871,15.165 -33.871,33.87c0,0.401 0.012,0.809 0.03,1.221c0.127,3.558 0.798,6.975 1.939,10.172c7.226,23.752 31.902,54.737 31.902,54.737c0,0 24.673,-30.982 31.9,-54.734c1.143,-3.197 1.813,-6.617 1.939,-10.175c0.02,-0.412 0.031,-0.819 0.031,-1.221c0.001,-18.705 -15.164,-33.87 -33.87,-33.87zM50,50.459c-9.161,0 -16.589,-7.428 -16.589,-16.589c0,-9.16 7.428,-16.588 16.589,-16.588c9.162,0 16.589,7.428 16.589,16.588c0,9.161 -7.427,16.589 -16.589,16.589z" fill="currentColor" class="fill c1"/>
+            </g>
+        </svg>
+      </div>
+      <div class="genre-label">GENRE</div>
+      <div class="genre-knob" id="genreKnob" onclick="nextGenre()" style="transition: transform 0.2s ease;">
+        <div class="genre-ring"></div>
+      </div>
+      <div class="genre">CHANGE<br>GENRE</div>
+    </div>
+  </div>
 
   <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
   <script>
+    // garmin unit 
+    function flash(btn) {
+      btn.style.background = '#2a4a2a';
+      btn.style.color = '#7ae07a';
+      setTimeout(() => {
+        btn.style.background = '';
+        btn.style.color = '';
+      }, 150);
+    }
+
+    // logic for knobs
+    let currentTempo = 120;
+    let currentVol = 80;
+
+    const tempoDisplay = document.getElementById('tempoDisplay');
+    const volDisplay = document.getElementById('volDisplay');
+    const tempoKnob = document.getElementById('tempoKnob');
+    const volKnob = document.getElementById('volKnob');
+
+    function mapRange(value, inMin, inMax, outMin, outMax) {
+      return ((value - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
+    }
+
+    function adjustTempoClick() {
+      currentTempo = (currentTempo + 10) > 180 ? 0 : currentTempo + 10;
+      updateKnobVisual(tempoKnob, currentTempo, 0, 180);
+      tempoDisplay.textContent = currentTempo;
+      flash(tempoKnob);
+    }
+
+    // handles clicking vol
+    function adjustVolClick() {
+      currentVol = (currentVol + 10) > 100 ? 0 : currentVol + 10;
+      updateKnobVisual(volKnob, currentVol, 0, 100);
+      volDisplay.textContent = currentVol;
+      flash(volKnob);
+    }
+
+    // rotates visual
+    function updateKnobVisual(knobElement, value, min, max) {
+      const rotationDeg = mapRange(value, min, max, -135, 135);
+      knobElement.style.transform = `rotate(${rotationDeg}deg)`;
+    }
+
+    function enableKnobDragging(knobElement, getValCallback, setValCallback, displayElement, minVal, maxVal) {
+      knobElement.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+
+        const centerRect = knobElement.getBoundingClientRect();
+        const knobCenterX = centerRect.left + centerRect.width / 2;
+        const knobCenterY = centerRect.top + centerRect.height / 2;
+
+        function rotateOnDrag(moveEvent) {
+          const x = moveEvent.clientX - knobCenterX;
+          const y = moveEvent.clientY - knobCenterY;
+        
+          let rad = Math.atan2(x, -y);
+          let deg = rad * (180 / Math.PI);
+        
+          deg = Math.max(-135, Math.min(135, deg));
+        
+          const calculatedValue = Math.round(mapRange(deg, -135, 135, minVal, maxVal));
+        
+          setValCallback(calculatedValue);
+          displayElement.textContent = calculatedValue;
+          knobElement.style.transform = `rotate(${deg}deg)`;
+        }
+
+        document.addEventListener('mousemove', rotateOnDrag);
+
+        document.addEventListener('mouseup', function cleanup() {
+          document.removeEventListener('mousemove', rotateOnDrag);
+          document.removeEventListener('mouseup', cleanup);
+        });
+      });
+
+      knobElement.ondragstart = () => false;
+    }
+
+    enableKnobDragging(tempoKnob, () => currentTempo, (v) => { currentTempo = v; }, tempoDisplay, 0, 180);
+    enableKnobDragging(volKnob, () => currentVol, (v) => { currentVol = v; }, volDisplay, 0, 100);
+
+    // genre knob 
+    const genres = ['JAZZ', 'LO-FI', 'CLASSICAL', 'HIP-HOP', 'AMBIENT'];
+    let currentGenreIndex = 0;
+    let genreRotation = 0;
+
+    function changeGenre(direction) {
+      currentGenreIndex = (currentGenreIndex + direction + genres.length) % genres.length;
+      genreRotation += direction * 36;
+
+      document.querySelector('.genre-knob').style.transform = `rotate(${genreRotation}deg)`;
+
+      document.querySelector('.genre').textContent = genres[currentGenreIndex];
+
+      fireNotify(genres[currentGenreIndex], 'GENRE CHANGED');
+    }
+
+    function nextGenre() { changeGenre(1); }
+    function prevGenre() { changeGenre(-1); }
+
+    const genreKnob = document.querySelector('.genre-knob');
+
+    // click to go forward
+    genreKnob.addEventListener('click', nextGenre);
+
+    // scroll wheel to go either direction
+    genreKnob.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      changeGenre(e.deltaY > 0 ? 1 : -1);
+    }, { passive: false });
+
+    // movable unit 
+    const unit = document.querySelector('.unit');
+
+    unit.addEventListener('mousedown', function(event) {
+      // ignores drag when interacting with unit
+      if (event.target.closest('.knob') || 
+          event.target.closest('.lower-btn') || 
+          event.target.closest('input') || 
+          event.target.closest('.genre-knob') || 
+          event.target.closest('.current-location-btn') ||
+          event.target.closest('.skysong-logo')) {
+        return;
+      }
+
+      const rect = unit.getBoundingClientRect();
+      const shiftX = event.clientX - rect.left;
+      const shiftY = event.clientY - rect.top;
+
+      unit.style.transform = 'none';
+
+      function moveAt(pageX, pageY) {
+        let newLeft = pageX - shiftX;
+        let newTop = pageY - shiftY;
+
+        const unitWidth = unit.offsetWidth;
+        const unitHeight = unit.offsetHeight;
+        const maxX = window.innerWidth - unitWidth;
+        const maxY = window.innerHeight - unitHeight;
+
+        if (newLeft < 0) newLeft = 0;
+        if (newLeft > maxX) newLeft = maxX;
+        if (newTop < 0) newTop = 0;
+        if (newTop > maxY) newTop = maxY;
+
+        unit.style.left = newLeft + 'px';
+        unit.style.top = newTop + 'px';
+      }
+
+      moveAt(event.pageX, event.pageY);
+
+      function onMouseMove(event) {
+        moveAt(event.pageX, event.pageY);
+      }
+
+      document.addEventListener('mousemove', onMouseMove);
+
+      document.addEventListener('mouseup', function onMouseUp() {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      });
+    });
+
+    // disable browser native dragndrop for glitches
+    unit.ondragstart = function() {
+      return false;
+    };
+
+    // alert system
+    function fireAlert(msg) {
+        document.getElementById('skysongAlertText').textContent = msg || 'ALERT';
+        document.getElementById('skysongAlert').classList.add('show');
+        document.querySelector('.lower-btn[onclick="clearSearch()"]')?.classList.add('alerting');
+    }
     
+    function dismissAlert() {
+      document.getElementById('skysongAlert').classList.remove('show');
+      document.querySelector('.lower-btn[onclick="clearSearch()"]')?.classList.remove('alerting');
+    }
+
+    let notifyTimer = null;
+
+    function fireNotify(title, sub) {
+      document.getElementById('skysongNotifyText').textContent = title || 'NOTIFICATION';
+      document.getElementById('skysongNotifySub').textContent = sub || 'NO SUBTITLE';
+      document.getElementById('skysongNotify').classList.add('show');
+      // auto-dismiss after 2.5s
+      clearTimeout(notifyTimer);
+      notifyTimer = setTimeout(() => {
+        document.getElementById('skysongNotify').classList.remove('show');
+      }, 2500);
+    }
+
+    const led1 = document.getElementById('led1');
+    let ledState = false;
+    setInterval(() => {
+      ledState = !ledState;
+      led1.classList.toggle('on', ledState);
+    }, 2800);
+
+    // maplibre setup
+    //fetch('https://davin-ommatophorous-sublustrously.ngrok-free.dev/maputnik.json')
     fetch('https://raw.githubusercontent.com/Trecks2Trecks/SkySong/refs/heads/main/maputnik.json')
       .then(res => res.json())
       .then(style => {
 
-        // terrain and hillshade setup
+        const heightInMeters = 2500;
+        const widthInMeters = 6000;
+
+        // Terrain and hillshade setup
         style.sources.terrainSource = {
           type: 'raster-dem',
           tiles: ['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],
@@ -65,22 +544,16 @@
           encoding: 'terrarium'
         };
 
-        style.terrain = {
-          source: 'terrainSource',
-          exaggeration: 1.5
-        };
+        style.terrain = { source: 'terrainSource', exaggeration: 1.5 };
 
         const hillshadeLayer = style.layers.find(l => l.id === 'hillshade');
         if (hillshadeLayer) {
           hillshadeLayer.source = 'terrainSource';
           hillshadeLayer.layout.visibility = 'visible';
-          style.layers = [
-            hillshadeLayer,
-            ...style.layers.filter(l => l.id !== 'hillshade')
-          ];
+          style.layers = [hillshadeLayer, ...style.layers.filter(l => l.id !== 'hillshade')];
         }
 
-        // initialise map
+        // Initialize map
         const map = new maplibregl.Map({
           container: 'map',
           style: style,
@@ -92,19 +565,11 @@
           hash: true
         });
 
-        // controls
-        map.addControl(new maplibregl.NavigationControl({
-          visualizePitch: true,
-          showZoom: true,
-          showCompass: true
-        }));
+        // Controls
+        map.addControl(new maplibregl.NavigationControl({ visualizePitch: true, showZoom: true, showCompass: true }));
+        map.addControl(new maplibregl.TerrainControl({ source: 'terrainSource', exaggeration: 1.5 }));
 
-        map.addControl(new maplibregl.TerrainControl({
-          source: 'terrainSource',
-          exaggeration: 1.5
-        }));
-
-        // calculates bounding box
+        // Calculates bounding box
         function getBoundingRectangleGeoJSON(lat, lng, heightInMeters, widthInMeters) {
             const latDelta = heightInMeters / 111000;
             const latInRadians = lat * (Math.PI / 180);
@@ -116,79 +581,73 @@
             const neLng = lng + (lngDelta / 2);
             const neLat = lat + (latDelta / 2);
 
-            // geojson polygon coordinates
             return {
                 type: 'Feature',
                 geometry: {
                     type: 'Polygon',
-                    coordinates: [[
-                        [swLng, swLat],
-                        [neLng, swLat],
-                        [neLng, neLat],
-                        [swLng, neLat],
-                        [swLng, swLat]
-                    ]]
+                    coordinates: [[[swLng, swLat], [neLng, swLat], [neLng, neLat], [swLng, neLat], [swLng, swLat]]]
                 }
             };
         }
 
-    
         // update or set up red boundary box layer
         function updateBoundaryLayer(geojsonFeature, fitBounds = true) {
-            // remove previous source and layer if  exist
             if (map.getLayer('boundary-layer')) map.removeLayer('boundary-layer');
             if (map.getSource('boundary-source')) map.removeSource('boundary-source');
 
-            // add geojson source
-            map.addSource('boundary-source', {
-                type: 'geojson',
-                data: geojsonFeature
-            });
-
-            // add layer representing the boundary
+            map.addSource('boundary-source', { type: 'geojson', data: geojsonFeature });
             map.addLayer({
                 id: 'boundary-layer',
                 type: 'line',
                 source: 'boundary-source',
-                paint: {
-                    'line-color': 'red',
-                    'line-width': 2
-                }
+                paint: { 'line-color': '#edafb8', 'line-width': 2 }
             });
 
-            // calculate bounding box and fit map to it
             if (fitBounds && geojsonFeature.geometry) {
                 const coordinates = geojsonFeature.geometry.type === 'Polygon' 
                     ? geojsonFeature.geometry.coordinates[0] 
                     : geojsonFeature.geometry.coordinates;
                 
-                console.log('Boundary coordinates:', coordinates);
-                // Ensure we have valid coordinates before creating bounds
                 if (coordinates && coordinates.length > 0) {
-                    // create bounds using the first point explicitly as an array
-                    const firstPoint = coordinates[0]; // e.g. [-0.1265398, 51.5004439]
+                    const firstPoint = coordinates[0];
                     const bounds = new maplibregl.LngLatBounds(firstPoint, firstPoint);
-
-                    // extend the bounds with the rest of the coordinates
-                    coordinates.forEach(coord => {
-                        bounds.extend(coord);
-                    });
-
-                } else {
-                    console.warn('Coordinates array is empty.');
+                    coordinates.forEach(coord => bounds.extend(coord));
                 }
+            }
+        }
+
+        // current location button
+        function currentLocation() {
+          if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lng = position.coords.longitude;
+                        const lat = position.coords.latitude;
+                        if (currentMarker) currentMarker.remove();
+                        map.flyTo({ center: [lng, lat], zoom: 14 });
+                        const polyFeature = getBoundingRectangleGeoJSON(lat, lng, heightInMeters, widthInMeters);
+                        updateBoundaryLayer(polyFeature, true);
+                        currentMarker = new maplibregl.Marker({ color: '#3fb1ce' })
+                            .setLngLat([lng, lat])
+                            .setPopup(new maplibregl.Popup().setHTML("You are here"))
+                            .addTo(map);
+                    },
+                    (error) => { console.error('Location error:', error); }
+                );
             }
         }
 
         function performSearch() {
             const query = document.getElementById('searchInput').value;
+            const searchedLocEl = document.getElementById('searchedLoc');
+            searchedLocEl.textContent = query.toUpperCase();
             if (!query) return;
 
             fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&polygon_geojson=1&format=json`)
                 .then(response => response.json())
                 .then(data => {
                     if (!data || data.length === 0) {
-                        alert('Location not found');
+                        fireAlert('LOCATION NOT FOUND');
                         return;
                     }
 
@@ -196,37 +655,28 @@
                     const lat = parseFloat(result.lat);
                     const lng = parseFloat(result.lon);
 
-                    // remove old marker
                     if (currentMarker) currentMarker.remove();
 
-                    // set marker at search 
                     currentMarker = new maplibregl.Marker({ color: '#3fb1ce' })
                         .setLngLat([lng, lat])
                         .setPopup(new maplibregl.Popup().setHTML(`<b>${result.display_name}</b>`))
                         .addTo(map);
 
-                    // fall back to a standard bounding box rectangle
                     if (result.geojson && (result.geojson.type === 'Polygon' || result.geojson.type === 'MultiPolygon')) {
                         updateBoundaryLayer({ type: 'Feature', geometry: result.geojson }, false);
                         const [south, north, west, east] = result.boundingbox.map(parseFloat);
                         map.fitBounds([[west, south], [east, north]], { padding: 50 });
                     } else {
-                        const polyFeature = getBoundingRectangleGeoJSON(lat, lng, 2500, 6000);
+                        const polyFeature = getBoundingRectangleGeoJSON(lat, lng, heightInMeters, widthInMeters);
                         updateBoundaryLayer(polyFeature, false);
                         const coords = polyFeature.geometry.coordinates[0];
                         map.fitBounds([[coords[0][0], coords[0][1]], [coords[2][0], coords[2][1]]], { padding: 50 });
                     }
                 })
-                .catch(error => {
-                    console.error('Error fetching place details:', error);
-                }); 
+                .catch(error => { console.error('Error fetching place details:', error); }); 
         }
 
         let currentMarker = null;
-
-
-        //map.boxZoom.disable();
-
         let startPoint = null;
 
         map.on('mousedown', (e) => {
@@ -258,38 +708,26 @@
 
         // location handling
         map.on('load', () => {
-            const heightInMeters = 2500;
-            const widthInMeters = 6000;
-
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
                         const lng = position.coords.longitude;
                         const lat = position.coords.latitude;
-
-                        // move to location
                         map.flyTo({ center: [lng, lat], zoom: 14 });
-
-                        // create bounding polygon 
                         const polyFeature = getBoundingRectangleGeoJSON(lat, lng, heightInMeters, widthInMeters);
                         updateBoundaryLayer(polyFeature, true);
-
-                        // add Marker
                         currentMarker = new maplibregl.Marker({ color: '#3fb1ce' })
                             .setLngLat([lng, lat])
                             .setPopup(new maplibregl.Popup().setHTML("You are here"))
                             .addTo(map);
                     },
-                    (error) => {
-                        console.error('Location error:', error);
-                    }
+                    (error) => { console.error('Location error:', error); }
                 );
-            } else {
-                console.log('Geolocation is not supported by this browser.');
             }
         });
 
-        // search button
+        // garmin clear nd search buttons
+        document.getElementById('current-location-button').addEventListener('click', currentLocation);
         document.getElementById('searchButton').addEventListener('click', performSearch);
         document.getElementById('searchInput').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') performSearch();
